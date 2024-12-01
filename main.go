@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"github.com/xmppo/go-xmpp"
@@ -34,18 +35,32 @@ func main() {
 	}
 
 	go func() {
-		//while chat, err := client.Recv(); chat != nil {
-		//
-		//}
 		for {
 			event, err := client.Recv()
 			if err != nil {
 				log.Println("Error receiving event - " + err.Error())
 			}
 
-			log.Println(event)
+			switch v := event.(type) {
+			case xmpp.Chat:
+				fmt.Println(v.Remote, v.Text)
+			case xmpp.Presence:
+				fmt.Println(v.From, v.Show)
+			}
 		}
 	}()
+
+	in := bufio.NewReader(os.Stdin)
+	for line, err := in.ReadString('\n'); err == nil; line, err = in.ReadString('\n') {
+		_, err := client.Send(xmpp.Chat{
+			Remote: "jjj333@pain.agency",
+			Type:   "chat",
+			Text:   line,
+		})
+		if err != nil {
+			log.Println("Error sending message - " + err.Error())
+		}
+	}
 
 	//options := xmpp.Options{}
 }
