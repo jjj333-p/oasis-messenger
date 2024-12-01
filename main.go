@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/widget"
 	"github.com/xmppo/go-xmpp"
 	"log"
 	"os"
@@ -49,6 +51,12 @@ func main() {
 			}
 		}
 	}()
+
+	a := app.New()
+	w := a.NewWindow("Hello World")
+
+	w.SetContent(widget.NewLabel("Hello World!"))
+	w.ShowAndRun()
 
 	in := bufio.NewReader(os.Stdin)
 	for line, err := in.ReadString('\n'); err == nil; line, err = in.ReadString('\n') {
