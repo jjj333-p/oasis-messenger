@@ -17,24 +17,26 @@ import (
 
 func main() {
 
+	//temporary until db and login page exists
 	loginJSONbytes, err := os.ReadFile("db/login.json")
 	if err != nil {
 		panic("Unable to read login.json - " + err.Error())
 	}
-
 	xmppConfig := xmpp.Options{}
-
 	if err := json.Unmarshal(loginJSONbytes, &xmppConfig); err != nil {
 		panic("Could not parse login.json - " + err.Error())
 	}
 
+	//just testing make sure was read correctly
 	fmt.Println(xmppConfig.User)
 
+	//login
 	client, err := xmppConfig.NewClient()
 	if err != nil {
 		panic("Could not login - " + err.Error())
 	}
 
+	//console log events as received, soon to be apart of the gui
 	go func() {
 		for {
 			event, err := client.Recv()
@@ -51,14 +53,18 @@ func main() {
 		}
 	}()
 
+	//create a window to send from
 	a := app.New()
 	w := a.NewWindow("Hello World")
 
+	//text inputs
 	jidEntry := widget.NewEntry()
 	jidEntry.SetPlaceHolder("JID")
 	msgEntry := widget.NewEntry()
 	msgEntry.SetPlaceHolder("Message")
-	sendBox := container.NewHBox(jidEntry, msgEntry, widget.NewButton("Send", func() {
+
+	//when you click send
+	sendButton := widget.NewButton("Send", func() {
 		_, err := client.Send(xmpp.Chat{
 			Remote: jidEntry.Text,
 			Type:   "chat",
@@ -68,8 +74,10 @@ func main() {
 			log.Println("Error sending message - " + err.Error())
 		}
 		msgEntry.SetText("")
-	}))
+	})
 
+	//just the parts required to send messages
+	sendBox := container.NewHBox(jidEntry, msgEntry, sendButton)
 	w.SetContent(sendBox)
 	w.ShowAndRun()
 
