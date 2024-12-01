@@ -1,3 +1,5 @@
+fyne.io/fyne/v2 v2.5.2 h1:eSyGTmSkv10yAdAeHpDet6u2KkKxOGFc14kQu81We7Q=
+fyne.io/fyne/v2 v2.5.2/go.mod h1:26gqPDvtaxHeyct+C0BBjuGd2zwAJlPkUGSBrb+d7Ug=
 github.com/xmppo/go-xmpp v0.2.7 h1:r18qi1Gxjrpsjn+5Xsy5pL9bhPMScYSabEgceTaCzAY=
 github.com/xmppo/go-xmpp v0.2.7/go.mod h1:b24GAaIpOqpxK7vYpZsMo11ReZ1qMBu3DPjkZXcqSpw=
 golang.org/x/crypto v0.28.0 h1:GBDwsMXVQi34v5CCYUm2jkJvu4cbtru2U4TN2PSyQnw=
