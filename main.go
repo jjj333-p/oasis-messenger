@@ -58,7 +58,7 @@ func main() {
 	jidEntry.SetPlaceHolder("JID")
 	msgEntry := widget.NewEntry()
 	msgEntry.SetPlaceHolder("Message")
-	windowContent := container.NewVBox(jidEntry, msgEntry, widget.NewButton("Send", func() {
+	sendBox := container.NewHBox(jidEntry, msgEntry, widget.NewButton("Send", func() {
 		_, err := client.Send(xmpp.Chat{
 			Remote: jidEntry.Text,
 			Type:   "chat",
@@ -69,7 +69,8 @@ func main() {
 		}
 		msgEntry.SetText("")
 	}))
-	w.SetContent(windowContent)
+
+	w.SetContent(sendBox)
 	w.ShowAndRun()
 
 	//options := xmpp.Options{}
