@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/xmppo/go-xmpp"
 	"log"
@@ -55,20 +55,23 @@ func main() {
 	a := app.New()
 	w := a.NewWindow("Hello World")
 
-	w.SetContent(widget.NewLabel("Hello World!"))
-	w.ShowAndRun()
-
-	in := bufio.NewReader(os.Stdin)
-	for line, err := in.ReadString('\n'); err == nil; line, err = in.ReadString('\n') {
+	jidEntry := widget.NewEntry()
+	jidEntry.SetPlaceHolder("JID")
+	msgEntry := widget.NewEntry()
+	msgEntry.SetPlaceHolder("Message")
+	windowContent := container.NewVBox(jidEntry, msgEntry, widget.NewButton("Send", func() {
 		_, err := client.Send(xmpp.Chat{
-			Remote: "jjj333@pain.agency",
+			Remote: jidEntry.Text,
 			Type:   "chat",
-			Text:   line,
+			Text:   msgEntry.Text,
 		})
 		if err != nil {
 			log.Println("Error sending message - " + err.Error())
 		}
-	}
+		msgEntry.SetText("")
+	}))
+	w.SetContent(windowContent)
+	w.ShowAndRun()
 
 	//options := xmpp.Options{}
 }
