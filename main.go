@@ -9,12 +9,11 @@ import (
 	"github.com/xmppo/go-xmpp"
 	"log"
 	"os"
-	"strings"
 )
 
-func serverName(host string) string {
-	return strings.Split(host, ":")[0]
-}
+//func serverName(host string) string {
+//	return strings.Split(host, ":")[0]
+//}
 
 func main() {
 
