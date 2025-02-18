@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 	"golang.org/x/net/context"
 	"io"
 	"mellium.im/sasl"
@@ -24,19 +28,80 @@ type login_info struct {
 	StartTLS bool   `json:"StartTLS"`
 }
 
-// MessageBody is a message stanza that contains a body. It is normally used for
-// chat messages.
 type MessageBody struct {
 	stanza.Message
 	Body string `xml:"body"`
 }
+type xmppMsg struct {
+	body      MessageBody
+	raw       string
+	uiElement fyne.CanvasObject
+}
+type msgCache struct {
+	//cache map[string][]MessageBody
+	cache  []xmppMsg
+	window fyne.Window
+}
+
+// deal with this later
+// only render messages when front
+func (cash msgCache) isFront() bool {
+	return true
+}
+
+func (cash msgCache) add(body MessageBody) {
+	//cash.cache = append(cash.cache, msg)
+	msg := xmppMsg{body: body}
+	//if chat is open, render the element
+	if cash.isFront() {
+		fEL := widget.NewLabel(body.From.String())
+		bEL := widget.NewLabel(body.Body)
+		EL := container.NewVBox(fEL, bEL)
+		msg.uiElement = EL
+	}
+}
+
+// MessageBody is a message stanza that contains a body. It is normally used for
+// chat messages.
 
 //func serverName(host string) string {
 //	return strings.Split(host, ":")[0]
 //}
 
+type msgListener func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error
+
 func main() {
 
+	messages := make(map[string]msgCache)
+	//cache := msgCache{make(map[string][]xmppMsg)}
+
+	err := initXMPP(&messages)
+	if err != nil {
+		panic(err)
+	}
+
+	a := app.New()
+	w := a.NewWindow("Hello World")
+
+	h := messages["jjj333@pain.agency"]
+	msgElements := make([]fyne.CanvasObject, 50)
+	w.SetContent(container.NewScroll(container.NewVBox()))
+
+	w.ShowAndRun()
+	for _, m := range h.cache {
+
+		if m.uiElement == nil {
+			fEL := widget.NewLabel(m.body.From.String())
+			bEL := widget.NewLabel(m.body.Body)
+			EL := container.NewVBox(fEL, bEL)
+			m.uiElement = EL
+		}
+
+		msgElements = append(msgElements, m.uiElement)
+	}
+}
+
+func initXMPP(messages *map[string]msgCache) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -90,47 +155,42 @@ func main() {
 		panic("Error sending initial presence - " + err.Error())
 	}
 
-	_ = session.Serve(xmpp.HandlerFunc(func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error {
-
-		decoder := xml.NewTokenDecoder(xmlstream.MultiReader(xmlstream.Token(*start), tokenReadEncoder))
-		if _, err := decoder.Token(); err != nil {
-			return err
-		}
-
-		// Ignore anything that's not a message. In a real system we'd want to at
-		// least respond to IQs.
-		if start.Name.Local != "message" {
-			return nil
-		}
-
-		msg := MessageBody{}
-		err = decoder.DecodeElement(&msg, start)
-		if err != nil && err != io.EOF {
-			fmt.Println("Error decoding element - " + err.Error())
-			return nil
-		}
-
-		// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
-		// body.
-		// In a real world situation we'd probably want to respond to IQs, at least.
-		if msg.Body == "" || msg.Type != stanza.ChatMessage {
-			return nil
-		}
-
-		reply := MessageBody{
-			Message: stanza.Message{
-				To: msg.From.Bare(),
-			},
-			Body: msg.Body,
-		}
-
-		fmt.Printf("Replying to message %q from %s with body %q", msg.ID, reply.To, reply.Body)
-		err = tokenReadEncoder.Encode(reply)
-		if err != nil {
-			fmt.Printf("Error responding to message %q: %q", msg.ID, err)
-		}
-
-		return nil
+	_ = session.Serve(xmpp.HandlerFunc(func(t xmlstream.TokenReadEncoder, start *xml.StartElement) error {
+		return onMSG(t, start, messages)
 	}))
 
+	return nil
+}
+
+func onMSG(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement, messages *map[string]msgCache) error {
+
+	decoder := xml.NewTokenDecoder(xmlstream.MultiReader(xmlstream.Token(*start), tokenReadEncoder))
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
+
+	// Ignore anything that's not a message. In a real system we'd want to at
+	// least respond to IQs.
+	if start.Name.Local != "message" {
+		return nil
+	}
+
+	body := MessageBody{}
+	err := decoder.DecodeElement(&body, start)
+	if err != nil && err != io.EOF {
+		fmt.Println("Error decoding element - " + err.Error())
+		return nil
+	}
+
+	// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
+	// body.
+	// In a real world situation we'd probably want to respond to IQs, at least.
+	if body.Body == "" || body.Type != stanza.ChatMessage {
+		return nil
+	}
+
+	(*messages)[body.From.String()].add(body)
+	//messages.cache[body.From.String()] = append(messages.cache[body.From.String()], message)
+
+	return nil
 }
