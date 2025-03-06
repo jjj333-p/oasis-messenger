@@ -75,10 +75,8 @@ func main() {
 	messages := make(map[string]msgCache)
 	//cache := msgCache{make(map[string][]xmppMsg)}
 
-	err := initXMPP(&messages)
-	if err != nil {
-		panic(err)
-	}
+	messageChan := make(chan MessageBody)
+	go initXMPP(messageChan)
 
 	a := app.New()
 	w := a.NewWindow("Hello World")
@@ -87,21 +85,60 @@ func main() {
 	msgElements := make([]fyne.CanvasObject, 50)
 	w.SetContent(container.NewScroll(container.NewVBox()))
 
-	w.ShowAndRun()
-	for _, m := range h.cache {
+	go func() {
+		for _, m := range h.cache {
 
-		if m.uiElement == nil {
-			fEL := widget.NewLabel(m.body.From.String())
-			bEL := widget.NewLabel(m.body.Body)
-			EL := container.NewVBox(fEL, bEL)
-			m.uiElement = EL
+			if m.uiElement == nil {
+				fEL := widget.NewLabel(m.body.From.String())
+				bEL := widget.NewLabel(m.body.Body)
+				EL := container.NewVBox(fEL, bEL)
+				m.uiElement = EL
+			}
+
+			msgElements = append(msgElements, m.uiElement)
 		}
-
-		msgElements = append(msgElements, m.uiElement)
-	}
+	}()
+	w.ShowAndRun()
 }
 
-func initXMPP(messages *map[string]msgCache) error {
+func handleEvent(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement, messageChan chan MessageBody) error {
+
+	decoder := xml.NewTokenDecoder(xmlstream.MultiReader(xmlstream.Token(*start), tokenReadEncoder))
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
+
+	// Ignore anything that's not a message. In a real system we'd want to at
+	// least respond to IQs.
+	if start.Name.Local == "message" {
+		//go handle
+		return nil
+	}
+
+	body := MessageBody{}
+	err := decoder.DecodeElement(&body, start)
+	if err != nil && err != io.EOF {
+		fmt.Println("Error decoding element - " + err.Error())
+		return nil
+	}
+
+	// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
+	// body.
+	// In a real world situation we'd probably want to respond to IQs, at least.
+	if body.Body == "" || body.Type != stanza.ChatMessage {
+		return nil
+	}
+
+	//pass back message
+	messageChan <- body
+
+	//(*messages)[body.From.String()].add(body)
+	//messages.cache[body.From.String()] = append(messages.cache[body.From.String()], message)
+
+	return nil
+}
+
+func initXMPP(messageChan chan MessageBody) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -155,42 +192,13 @@ func initXMPP(messages *map[string]msgCache) error {
 		panic("Error sending initial presence - " + err.Error())
 	}
 
-	_ = session.Serve(xmpp.HandlerFunc(func(t xmlstream.TokenReadEncoder, start *xml.StartElement) error {
-		return onMSG(t, start, messages)
-	}))
+	_ = session.Serve(
+		xmpp.HandlerFunc(
+			func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error {
 
-	return nil
-}
+			},
+		),
+	)
 
-func onMSG(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement, messages *map[string]msgCache) error {
-
-	decoder := xml.NewTokenDecoder(xmlstream.MultiReader(xmlstream.Token(*start), tokenReadEncoder))
-	if _, err := decoder.Token(); err != nil {
-		return err
-	}
-
-	// Ignore anything that's not a message. In a real system we'd want to at
-	// least respond to IQs.
-	if start.Name.Local != "message" {
-		return nil
-	}
-
-	body := MessageBody{}
-	err := decoder.DecodeElement(&body, start)
-	if err != nil && err != io.EOF {
-		fmt.Println("Error decoding element - " + err.Error())
-		return nil
-	}
-
-	// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
-	// body.
-	// In a real world situation we'd probably want to respond to IQs, at least.
-	if body.Body == "" || body.Type != stanza.ChatMessage {
-		return nil
-	}
-
-	(*messages)[body.From.String()].add(body)
-	//messages.cache[body.From.String()] = append(messages.cache[body.From.String()], message)
-
-	return nil
+	return
 }
