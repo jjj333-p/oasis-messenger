@@ -20,7 +20,7 @@ import (
 	"os"
 )
 
-type login_info struct {
+type loginInfo struct {
 	Host     string `json:"Host"`
 	User     string `json:"User"`
 	Password string `json:"Password"`
@@ -147,7 +147,7 @@ func initXMPP(messageChan chan MessageBody) {
 	if err != nil {
 		panic("Unable to read login.json - " + err.Error())
 	}
-	xmppConfig := login_info{}
+	xmppConfig := loginInfo{}
 	if err := json.Unmarshal(loginJSONbytes, &xmppConfig); err != nil {
 		panic("Could not parse login.json - " + err.Error())
 	}
