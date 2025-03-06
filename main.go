@@ -67,14 +67,8 @@ func (cash msgCache) add(body MessageBody) {
 	}
 }
 
-// MessageBody is a message stanza that contains a body. It is normally used for
-// chat messages.
-
-//func serverName(host string) string {
-//	return strings.Split(host, ":")[0]
-//}
-
-type msgListener func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error
+//existed when i had the xml decoding in a goroutine, didnt work because pointer deref
+//type msgListener func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error
 
 func main() {
 
@@ -131,21 +125,6 @@ func main() {
 		//}
 	}()
 
-	//h := messageChans["jjj333@pain.agency"]
-
-	//go func() {
-	//	for _, m := range h.cache {
-	//
-	//		if m.uiElement == nil {
-	//			fEL := widget.NewLabel(m.body.From.String())
-	//			bEL := widget.NewLabel(m.body.Body)
-	//			EL := container.NewVBox(fEL, bEL)
-	//			m.uiElement = EL
-	//		}
-	//
-	//
-	//	}
-	//}()
 	w.ShowAndRun()
 }
 
