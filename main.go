@@ -72,17 +72,12 @@ func (cash msgCache) add(body MessageBody) {
 
 func main() {
 
-	////channel of recieved messages after decoding
-	//messageChans := make(map[string]chan MessageBody)
-	////cache := msgCache{make(map[string][]xmppMsg)}
-	//
-	////channel of message chans that exist
-	//messageChansChan := make(chan string)
-
 	msgBodyChansChan := make(chan MsgBodyChan)
 
+	//run the sdk in its own goroutine
 	go initXMPP(msgBodyChansChan)
 
+	//create fyne applet
 	a := app.New()
 	w := a.NewWindow("Hello World")
 	input := widget.NewEntry()
@@ -93,15 +88,18 @@ func main() {
 	w.SetContent(container.NewVBox(input, scroll))
 
 	go func() {
+
 		openMsgBodyChans := make(map[string]MsgBodyChan)
-		//while(true) {
-		//	xmppMessage <-
-		//}
+
+		//recieve new chats, handling for displaying the metadata in the MsgBodyChan struct
+		//later, also adding metadata later
 		go func() {
 			for chatChan := range msgBodyChansChan {
 				openMsgBodyChans[chatChan.from] = chatChan
 			}
 		}()
+
+		//whichever chat is open, chat selector not yet created so hardcoded to jjj333@pain.agency
 		for {
 			c, ok := openMsgBodyChans["jjj333@pain.agency"]
 			if !ok || c.channel == nil {
@@ -237,6 +235,7 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 
 					fmt.Printf("%s: %s", body.From.Bare().String(), body.Body)
 
+					//check if theres an open channel for that chat, if not create one
 					if openMsgBodyChans[body.From.Bare().String()].channel == nil {
 						c := MsgBodyChan{
 							from:    body.From.Bare().String(),
