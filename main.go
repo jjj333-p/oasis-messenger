@@ -85,9 +85,9 @@ func main() {
 	////channel of message chans that exist
 	//messageChansChan := make(chan string)
 
-	msgBodyChanChans := make(chan MsgBodyChan)
+	msgBodyChansChan := make(chan MsgBodyChan)
 
-	go initXMPP(msgBodyChanChans)
+	go initXMPP(msgBodyChansChan)
 
 	a := app.New()
 	w := a.NewWindow("Hello World")
@@ -104,7 +104,7 @@ func main() {
 		//	xmppMessage <-
 		//}
 		go func() {
-			for chatChan := range msgBodyChanChans {
+			for chatChan := range msgBodyChansChan {
 				openMsgBodyChans[chatChan.from] = chatChan
 			}
 		}()
@@ -152,7 +152,7 @@ func main() {
 //func handleEvent(
 //	tokenReadEncoder xmlstream.TokenReadEncoder,
 //	start *xml.StartElement,
-//	msgBodyChanChans chan MsgBodyChan,
+//	msgBodyChansChan chan MsgBodyChan,
 //	openMsgBodyChans map[string]MsgBodyChan,
 //) {
 //
@@ -167,7 +167,7 @@ func main() {
 //}
 
 // basically run the sdk in its own goroutine
-func initXMPP(msgBodyChanChans chan MsgBodyChan) {
+func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -264,7 +264,7 @@ func initXMPP(msgBodyChanChans chan MsgBodyChan) {
 							channel: make(chan xmppMsg),
 						}
 						openMsgBodyChans[body.From.Bare().String()] = c
-						msgBodyChanChans <- c
+						msgBodyChansChan <- c
 					}
 
 					//create ui element for message
