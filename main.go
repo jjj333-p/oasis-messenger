@@ -18,6 +18,7 @@ import (
 	"mellium.im/xmpp/jid"
 	"mellium.im/xmpp/stanza"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -87,6 +88,8 @@ func main() {
 	scroll := container.NewScroll(msgvbox)
 	w.SetContent(container.NewVBox(input, scroll))
 
+	chanLock := sync.Mutex{}
+
 	go func() {
 
 		openMsgBodyChans := make(map[string]MsgBodyChan)
@@ -95,17 +98,22 @@ func main() {
 		//later, also adding metadata later
 		go func() {
 			for chatChan := range msgBodyChansChan {
+				chanLock.Lock()
 				openMsgBodyChans[chatChan.from] = chatChan
+				chanLock.Unlock()
 			}
 		}()
 
 		//whichever chat is open, chat selector not yet created so hardcoded to jjj333@pain.agency
 		for {
+			chanLock.Lock()
 			c, ok := openMsgBodyChans["jjj333@pain.agency"]
 			if !ok || c.channel == nil {
 				time.Sleep(1 * time.Second)
 				continue
 			}
+			//dont need the lock once we get the chan ref
+			chanLock.Unlock()
 
 			xmppMessage := <-c.channel // MsgBodyChan{channel: make(chan xmppMsg)}
 			fmt.Println(xmppMessage.body)
@@ -200,6 +208,7 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 
 	//map of open channels to send messages into
 	openMsgBodyChans := make(map[string]MsgBodyChan)
+	chanLock := sync.Mutex{}
 
 	_ = session.Serve(
 		xmpp.HandlerFunc(
@@ -231,32 +240,33 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 				}
 
 				//pass back message, creating new channel if not open
-				go func() {
+				fmt.Printf("%s: %s", body.From.Bare().String(), body.Body)
 
-					fmt.Printf("%s: %s", body.From.Bare().String(), body.Body)
-
-					//check if theres an open channel for that chat, if not create one
-					if openMsgBodyChans[body.From.Bare().String()].channel == nil {
-						c := MsgBodyChan{
-							from:    body.From.Bare().String(),
-							channel: make(chan xmppMsg),
-						}
-						openMsgBodyChans[body.From.Bare().String()] = c
-						msgBodyChansChan <- c
+				//check if theres an open channel for that chat, if not create one
+				chanLock.Lock()
+				c, ok := openMsgBodyChans[body.From.Bare().String()]
+				if !ok || c.channel == nil {
+					newChan := MsgBodyChan{
+						from:    body.From.Bare().String(),
+						channel: make(chan xmppMsg),
 					}
+					openMsgBodyChans[body.From.Bare().String()] = newChan
+					c = newChan
+					msgBodyChansChan <- newChan
+				}
+				chanLock.Unlock()
 
-					//create ui element for message
-					fEL := widget.NewLabel(body.From.Bare().String())
-					bEL := widget.NewLabel(body.Body)
-					EL := container.NewVBox(fEL, bEL)
+				//create ui element for message
+				fEL := widget.NewLabel(body.From.Bare().String())
+				bEL := widget.NewLabel(body.Body)
+				EL := container.NewVBox(fEL, bEL)
 
-					//pass into channel
-					openMsgBodyChans[body.From.Bare().String()].channel <- xmppMsg{
-						body:      body,
-						uiElement: EL,
-						raw:       "Go fuck yourself",
-					}
-				}()
+				//pass into channel
+				c.channel <- xmppMsg{
+					body:      body,
+					uiElement: EL,
+					raw:       "Go fuck yourself",
+				}
 				return nil
 			},
 		),
