@@ -18,6 +18,7 @@ import (
 	"mellium.im/xmpp/jid"
 	"mellium.im/xmpp/stanza"
 	"os"
+	"time"
 )
 
 type loginInfo struct {
@@ -32,10 +33,15 @@ type MessageBody struct {
 	stanza.Message
 	Body string `xml:"body"`
 }
+
 type xmppMsg struct {
 	body      MessageBody
 	raw       string
 	uiElement fyne.CanvasObject
+}
+type MsgBodyChan struct {
+	from    string
+	channel chan xmppMsg // = make(chan MessageBody)
 }
 type msgCache struct {
 	//cache map[string][]MessageBody
@@ -54,7 +60,7 @@ func (cash msgCache) add(body MessageBody) {
 	msg := xmppMsg{body: body}
 	//if chat is open, render the element
 	if cash.isFront() {
-		fEL := widget.NewLabel(body.From.String())
+		fEL := widget.NewLabel(body.From.Bare().String())
 		bEL := widget.NewLabel(body.Body)
 		EL := container.NewVBox(fEL, bEL)
 		msg.uiElement = EL
@@ -72,73 +78,96 @@ type msgListener func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.St
 
 func main() {
 
-	messages := make(map[string]msgCache)
-	//cache := msgCache{make(map[string][]xmppMsg)}
+	////channel of recieved messages after decoding
+	//messageChans := make(map[string]chan MessageBody)
+	////cache := msgCache{make(map[string][]xmppMsg)}
+	//
+	////channel of message chans that exist
+	//messageChansChan := make(chan string)
 
-	messageChan := make(chan MessageBody)
-	go initXMPP(messageChan)
+	msgBodyChanChans := make(chan MsgBodyChan)
+
+	go initXMPP(msgBodyChanChans)
 
 	a := app.New()
 	w := a.NewWindow("Hello World")
-
-	h := messages["jjj333@pain.agency"]
-	msgElements := make([]fyne.CanvasObject, 50)
-	w.SetContent(container.NewScroll(container.NewVBox()))
+	input := widget.NewEntry()
+	input.SetPlaceHolder("Enter jid...")
+	//msgElements := make([]fyne.CanvasObject, 50)
+	msgvbox := container.NewVBox()
+	scroll := container.NewScroll(msgvbox)
+	w.SetContent(container.NewVBox(input, scroll))
 
 	go func() {
-		for _, m := range h.cache {
-
-			if m.uiElement == nil {
-				fEL := widget.NewLabel(m.body.From.String())
-				bEL := widget.NewLabel(m.body.Body)
-				EL := container.NewVBox(fEL, bEL)
-				m.uiElement = EL
+		openMsgBodyChans := make(map[string]MsgBodyChan)
+		//while(true) {
+		//	xmppMessage <-
+		//}
+		go func() {
+			for chatChan := range msgBodyChanChans {
+				openMsgBodyChans[chatChan.from] = chatChan
+			}
+		}()
+		for {
+			c, ok := openMsgBodyChans["jjj333@pain.agency"]
+			if !ok || c.channel == nil {
+				time.Sleep(1 * time.Second)
+				continue
 			}
 
-			msgElements = append(msgElements, m.uiElement)
+			xmppMessage := <-c.channel // MsgBodyChan{channel: make(chan xmppMsg)}
+			fmt.Println(xmppMessage.body)
+			msgvbox.Add(xmppMessage.uiElement)
+			scroll.Refresh()
+			//msgElements = append(msgElements, xmppMessage.uiElement)
+			//xmppMessage <- c
 		}
+		//	go func() {
+		//		for msgBody := range chatChan.channel {
+		//			fmt.Printf("%s %s\n", chatChan.from, msgBody.Body)
+		//
+		//		}
+		//	}()
+		//}
 	}()
+
+	//h := messageChans["jjj333@pain.agency"]
+
+	//go func() {
+	//	for _, m := range h.cache {
+	//
+	//		if m.uiElement == nil {
+	//			fEL := widget.NewLabel(m.body.From.String())
+	//			bEL := widget.NewLabel(m.body.Body)
+	//			EL := container.NewVBox(fEL, bEL)
+	//			m.uiElement = EL
+	//		}
+	//
+	//
+	//	}
+	//}()
 	w.ShowAndRun()
 }
 
-func handleEvent(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement, messageChan chan MessageBody) error {
+//func handleEvent(
+//	tokenReadEncoder xmlstream.TokenReadEncoder,
+//	start *xml.StartElement,
+//	msgBodyChanChans chan MsgBodyChan,
+//	openMsgBodyChans map[string]MsgBodyChan,
+//) {
+//
+//
+//
+//	//messageChan <- body
+//
+//	//(*messages)[body.From.String()].add(body)
+//	//messages.cache[body.From.String()] = append(messages.cache[body.From.String()], message)
+//
+//	return // nil
+//}
 
-	decoder := xml.NewTokenDecoder(xmlstream.MultiReader(xmlstream.Token(*start), tokenReadEncoder))
-	if _, err := decoder.Token(); err != nil {
-		return err
-	}
-
-	// Ignore anything that's not a message. In a real system we'd want to at
-	// least respond to IQs.
-	if start.Name.Local == "message" {
-		//go handle
-		return nil
-	}
-
-	body := MessageBody{}
-	err := decoder.DecodeElement(&body, start)
-	if err != nil && err != io.EOF {
-		fmt.Println("Error decoding element - " + err.Error())
-		return nil
-	}
-
-	// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
-	// body.
-	// In a real world situation we'd probably want to respond to IQs, at least.
-	if body.Body == "" || body.Type != stanza.ChatMessage {
-		return nil
-	}
-
-	//pass back message
-	messageChan <- body
-
-	//(*messages)[body.From.String()].add(body)
-	//messages.cache[body.From.String()] = append(messages.cache[body.From.String()], message)
-
-	return nil
-}
-
-func initXMPP(messageChan chan MessageBody) {
+// basically run the sdk in its own goroutine
+func initXMPP(msgBodyChanChans chan MsgBodyChan) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -192,10 +221,65 @@ func initXMPP(messageChan chan MessageBody) {
 		panic("Error sending initial presence - " + err.Error())
 	}
 
+	//map of open channels to send messages into
+	openMsgBodyChans := make(map[string]MsgBodyChan)
+
 	_ = session.Serve(
 		xmpp.HandlerFunc(
 			func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error {
+				decoder := xml.NewTokenDecoder(xmlstream.MultiReader(xmlstream.Token(*start), tokenReadEncoder))
+				if _, err := decoder.Token(); err != nil {
+					return err
+				}
 
+				// Ignore anything that's not a message. In a real system we'd want to at
+				// least respond to IQs.
+				if start.Name.Local != "message" {
+					//go handle
+					return nil
+				}
+
+				body := MessageBody{}
+				err := decoder.DecodeElement(&body, start)
+				if err != nil && err != io.EOF {
+					fmt.Println("Error decoding element - " + err.Error())
+					return nil
+				}
+
+				// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
+				// body.
+				// In a real world situation we'd probably want to respond to IQs, at least.
+				if body.Body == "" || body.Type != stanza.ChatMessage {
+					return nil
+				}
+
+				//pass back message, creating new channel if not open
+				go func() {
+
+					fmt.Printf("%s: %s", body.From.Bare().String(), body.Body)
+
+					if openMsgBodyChans[body.From.Bare().String()].channel == nil {
+						c := MsgBodyChan{
+							from:    body.From.Bare().String(),
+							channel: make(chan xmppMsg),
+						}
+						openMsgBodyChans[body.From.Bare().String()] = c
+						msgBodyChanChans <- c
+					}
+
+					//create ui element for message
+					fEL := widget.NewLabel(body.From.Bare().String())
+					bEL := widget.NewLabel(body.Body)
+					EL := container.NewVBox(fEL, bEL)
+
+					//pass into channel
+					openMsgBodyChans[body.From.Bare().String()].channel <- xmppMsg{
+						body:      body,
+						uiElement: EL,
+						raw:       "Go fuck yourself",
+					}
+				}()
+				return nil
 			},
 		),
 	)
