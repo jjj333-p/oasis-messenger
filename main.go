@@ -44,29 +44,6 @@ type MsgBodyChan struct {
 	from    string
 	channel chan xmppMsg // = make(chan MessageBody)
 }
-type msgCache struct {
-	//cache map[string][]MessageBody
-	cache  []xmppMsg
-	window fyne.Window
-}
-
-// deal with this later
-// only render messages when front
-func (cash msgCache) isFront() bool {
-	return true
-}
-
-func (cash msgCache) add(body MessageBody) {
-	//cash.cache = append(cash.cache, msg)
-	msg := xmppMsg{body: body}
-	//if chat is open, render the element
-	if cash.isFront() {
-		fEL := widget.NewLabel(body.From.Bare().String())
-		bEL := widget.NewLabel(body.Body)
-		EL := container.NewVBox(fEL, bEL)
-		msg.uiElement = EL
-	}
-}
 
 //existed when i had the xml decoding in a goroutine, didnt work because pointer deref
 //type msgListener func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error
@@ -267,6 +244,7 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 					uiElement: EL,
 					raw:       "Go fuck yourself",
 				}
+
 				return nil
 			},
 		),
