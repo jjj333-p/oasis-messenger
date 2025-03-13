@@ -5,67 +5,99 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"io"
-	"os"
-	"sync"
-	"time"
-
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"golang.org/x/net/context"
+	"io"
 	"mellium.im/sasl"
 	"mellium.im/xmlstream"
 	"mellium.im/xmpp"
 	"mellium.im/xmpp/dial"
 	"mellium.im/xmpp/jid"
 	"mellium.im/xmpp/stanza"
-	xmppclient "pain.agency/oasis/internal/xmpp-client"
+	"os"
+	"sync"
+	"time"
 )
 
-// existed when i had the xml decoding in a goroutine, didnt work because pointer deref
-// type msgListener func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error
+type loginInfo struct {
+	Host     string `json:"Host"`
+	User     string `json:"User"`
+	Password string `json:"Password"`
+	TLSoff   bool   `json:"NoTLS"`
+	StartTLS bool   `json:"StartTLS"`
+}
+
+type MessageBody struct {
+	stanza.Message
+	Body string `xml:"body"`
+}
+
+type xmppMsg struct {
+	body      MessageBody
+	raw       string
+	uiElement fyne.CanvasObject
+}
+type MsgBodyChan struct {
+	from    string
+	channel chan xmppMsg // = make(chan MessageBody)
+}
+
+//existed when i had the xml decoding in a goroutine, didnt work because pointer deref
+//type msgListener func(tokenReadEncoder xmlstream.TokenReadEncoder, start *xml.StartElement) error
+
 func main() {
+
 	msgBodyChansChan := make(chan MsgBodyChan)
 
-	// run the sdk in its own goroutine
-	cl, err := xmppclient.New()
+	//run the sdk in its own goroutine
+	go initXMPP(msgBodyChansChan)
 
-	// create fyne applet
+	//create fyne applet
 	a := app.New()
 	w := a.NewWindow("Hello World")
 	input := widget.NewEntry()
 	input.SetPlaceHolder("Enter jid...")
-	// msgElements := make([]fyne.CanvasObject, 50)
+	//msgElements := make([]fyne.CanvasObject, 50)
 	msgvbox := container.NewVBox()
 	scroll := container.NewScroll(msgvbox)
 	w.SetContent(container.NewVBox(input, scroll))
 
+	chanLock := sync.Mutex{}
+
 	go func() {
-		// whichever chat is open, chat selector not yet created so hardcoded to jjj333@pain.agency
-		room := cl.GetRoom("jjj333@pain.agency")
-		for room == nil {
-			time.Sleep(1 * time.Second)
-			room = cl.GetRoom("jjj333@pain.agency")
-		}
-		for {
-			select {
-			case <-cl.AwaitNewRoom():
-				fmt.Println("yaay! we got a new room!")
-			case <-room.AwaitNewMessage():
-				msg := room.Messages[len(room.Messages)]
-				fmt.Println(msg)
 
-				fEL := widget.NewLabel(msg.From.Bare().String())
-				bEL := widget.NewLabel(msg.Body)
-				EL := container.NewVBox(fEL, bEL)
+		openMsgBodyChans := make(map[string]MsgBodyChan)
 
-				msgvbox.Add(EL)
-				scroll.Refresh()
+		//recieve new chats, handling for displaying the metadata in the MsgBodyChan struct
+		//later, also adding metadata later
+		go func() {
+			for chatChan := range msgBodyChansChan {
+				chanLock.Lock()
+				openMsgBodyChans[chatChan.from] = chatChan
+				chanLock.Unlock()
 			}
+		}()
 
-			// msgElements = append(msgElements, xmppMessage.uiElement)
-			// xmppMessage <- c
+		//whichever chat is open, chat selector not yet created so hardcoded to jjj333@pain.agency
+		for {
+			chanLock.Lock()
+			c, ok := openMsgBodyChans["jjj333@pain.agency"]
+			if !ok || c.channel == nil {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			//dont need the lock once we get the chan ref
+			chanLock.Unlock()
+
+			xmppMessage := <-c.channel // MsgBodyChan{channel: make(chan xmppMsg)}
+			fmt.Println(xmppMessage.body)
+			msgvbox.Add(xmppMessage.uiElement)
+			scroll.Refresh()
+			//msgElements = append(msgElements, xmppMessage.uiElement)
+			//xmppMessage <- c
 		}
 		//	go func() {
 		//		for msgBody := range chatChan.channel {
@@ -81,7 +113,7 @@ func main() {
 
 //func handleEvent(
 //	tokenReadEncoder xmlstream.TokenReadEncoder,
-//	sta  rt *xml.StartElement,
+//	start *xml.StartElement,
 //	msgBodyChansChan chan MsgBodyChan,
 //	openMsgBodyChans map[string]MsgBodyChan,
 //) {
@@ -91,7 +123,9 @@ func main() {
 //	//messageChan <- body
 //
 //	//(*messages)[body.From.String()].add(body)
-////	return // nil
+//	//messages.cache[body.From.String()] = append(messages.cache[body.From.String()], message)
+//
+//	return // nil
 //}
 
 // basically run the sdk in its own goroutine
@@ -99,7 +133,7 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// temporary until db and login page exists
+	//temporary until db and login page exists
 	loginJSONbytes, err := os.ReadFile("db/login.json")
 	if err != nil {
 		panic("Unable to read login.json - " + err.Error())
@@ -145,11 +179,11 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 	// Send initial presence to let the server know we want to receive messages.
 	err = session.Send(ctx, stanza.Presence{Type: stanza.AvailablePresence}.Wrap(nil))
 	if err != nil {
-		// return fmt.Errorf("Error sending initial presence: %w", err)
+		//return fmt.Errorf("Error sending initial presence: %w", err)
 		panic("Error sending initial presence - " + err.Error())
 	}
 
-	// map of open channels to send messages into
+	//map of open channels to send messages into
 	openMsgBodyChans := make(map[string]MsgBodyChan)
 	chanLock := sync.Mutex{}
 
@@ -164,7 +198,7 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 				// Ignore anything that's not a message. In a real system we'd want to at
 				// least respond to IQs.
 				if start.Name.Local != "message" {
-					// go handle
+					//go handle
 					return nil
 				}
 
@@ -182,10 +216,10 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 					return nil
 				}
 
-				// pass back message, creating new channel if not open
+				//pass back message, creating new channel if not open
 				fmt.Printf("%s: %s", body.From.Bare().String(), body.Body)
 
-				// check if theres an open channel for that chat, if not create one
+				//check if theres an open channel for that chat, if not create one
 				chanLock.Lock()
 				c, ok := openMsgBodyChans[body.From.Bare().String()]
 				if !ok || c.channel == nil {
@@ -199,12 +233,12 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 				}
 				chanLock.Unlock()
 
-				// create ui element for message
+				//create ui element for message
 				fEL := widget.NewLabel(body.From.Bare().String())
 				bEL := widget.NewLabel(body.Body)
 				EL := container.NewVBox(fEL, bEL)
 
-				// pass into channel
+				//pass into channel
 				c.channel <- xmppMsg{
 					body:      body,
 					uiElement: EL,
