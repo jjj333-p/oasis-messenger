@@ -85,12 +85,12 @@ func main() {
 		for {
 			chanLock.Lock()
 			c, ok := openMsgBodyChans["jjj333@pain.agency"]
+			//dont need the lock once we get the chan ref
+			chanLock.Unlock()
 			if !ok || c.channel == nil {
 				time.Sleep(1 * time.Second)
 				continue
 			}
-			//dont need the lock once we get the chan ref
-			chanLock.Unlock()
 
 			xmppMessage := <-c.channel // MsgBodyChan{channel: make(chan xmppMsg)}
 			fmt.Println(xmppMessage.body)
@@ -107,7 +107,6 @@ func main() {
 		//	}()
 		//}
 	}()
-
 	w.ShowAndRun()
 }
 
@@ -201,50 +200,60 @@ func initXMPP(msgBodyChansChan chan MsgBodyChan) {
 					//go handle
 					return nil
 				}
+				switch start.Name.Local {
+				case "message":
 
-				body := MessageBody{}
-				err := decoder.DecodeElement(&body, start)
-				if err != nil && err != io.EOF {
-					fmt.Println("Error decoding element - " + err.Error())
-					return nil
-				}
-
-				// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
-				// body.
-				// In a real world situation we'd probably want to respond to IQs, at least.
-				if body.Body == "" || body.Type != stanza.ChatMessage {
-					return nil
-				}
-
-				//pass back message, creating new channel if not open
-				fmt.Printf("%s: %s", body.From.Bare().String(), body.Body)
-
-				//check if theres an open channel for that chat, if not create one
-				chanLock.Lock()
-				c, ok := openMsgBodyChans[body.From.Bare().String()]
-				if !ok || c.channel == nil {
-					newChan := MsgBodyChan{
-						from:    body.From.Bare().String(),
-						channel: make(chan xmppMsg),
+					body := MessageBody{}
+					err := decoder.DecodeElement(&body, start)
+					if err != nil && err != io.EOF {
+						fmt.Println("Error decoding element - " + err.Error())
+						return nil
 					}
-					openMsgBodyChans[body.From.Bare().String()] = newChan
-					c = newChan
-					msgBodyChansChan <- newChan
+
+					// Don'tokenReadEncoder reflect messages unless they are chat messages and actually have a
+					// body.
+					// In a real world situation we'd probably want to respond to IQs, at least.
+					if body.Body == "" {
+						//stanza.
+						fmt.Printf("%s from %s\n", body.Type, body.From.Bare().String())
+						return nil
+					}
+					if body.Type != stanza.ChatMessage {
+						fmt.Printf("%s %s: %s\n", body.Type, body.From.Bare().String(), body.Body)
+						return nil
+					}
+
+					//pass back message, creating new channel if not open
+					fmt.Printf("%s: %s\n", body.From.Bare().String(), body.Body)
+
+					//check if theres an open channel for that chat, if not create one
+					chanLock.Lock()
+					c, ok := openMsgBodyChans[body.From.Bare().String()]
+					if !ok || c.channel == nil {
+						newChan := MsgBodyChan{
+							from:    body.From.Bare().String(),
+							channel: make(chan xmppMsg),
+						}
+						openMsgBodyChans[body.From.Bare().String()] = newChan
+						c = newChan
+						msgBodyChansChan <- newChan
+					}
+					chanLock.Unlock()
+
+					//create ui element for message
+					fEL := widget.NewLabel(body.From.Bare().String())
+					bEL := widget.NewLabel(body.Body)
+					EL := container.NewVBox(fEL, bEL)
+
+					//pass into channel
+					c.channel <- xmppMsg{
+						body:      body,
+						uiElement: EL,
+						raw:       "Go fuck yourself",
+					}
+
+					return nil
 				}
-				chanLock.Unlock()
-
-				//create ui element for message
-				fEL := widget.NewLabel(body.From.Bare().String())
-				bEL := widget.NewLabel(body.Body)
-				EL := container.NewVBox(fEL, bEL)
-
-				//pass into channel
-				c.channel <- xmppMsg{
-					body:      body,
-					uiElement: EL,
-					raw:       "Go fuck yourself",
-				}
-
 				return nil
 			},
 		),
